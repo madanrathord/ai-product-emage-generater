@@ -1,0 +1,6 @@
+{
+  "name": "AI Product Studio",
+  "description": "E-commerce product studio powered by Gemini API to generate professional styling catalogs and high-converting copy listing content.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
