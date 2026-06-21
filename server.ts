@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
@@ -12,10 +13,11 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
   // Lazy instantiate the GoogleGenAI instance inside endpoint calls to handle missing keys gracefully on startup
-  const getAiClient = () => {
-    const apiKey = process.env.GEMINI_API_KEY;
+  const getAiClient = (req?: any) => {
+    const customApiKey = req?.headers?.["x-custom-api-key"];
+    const apiKey = typeof customApiKey === "string" && customApiKey.trim() ? customApiKey.trim() : process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured in Secrets. Please configure it in your AI Studio Secrets panel.");
+      throw new Error("GEMINI_API_KEY is not configured in Secrets. Please configure it in your AI Studio Secrets panel, or configure your Custom API Key in the header widget.");
     }
     return new GoogleGenAI({
       apiKey,
@@ -40,7 +42,7 @@ async function startServer() {
         return res.status(400).json({ error: "No prompt text provided for the style." });
       }
 
-      const ai = getAiClient();
+      const ai = getAiClient(req);
 
       // Convert images into inlineParts for Gemini API
       const inlineDataParts = uploadedImages.map(img => {
@@ -142,7 +144,7 @@ async function startServer() {
         return res.status(400).json({ error: "Please upload at least one physical product reference photo." });
       }
 
-      const ai = getAiClient();
+      const ai = getAiClient(req);
 
       const specsText = `
         - Decoration Theme: ${decoration || "None specified"}
@@ -230,6 +232,18 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+    
+    app.get("*", async (req, res, next) => {
+      const url = req.originalUrl;
+      try {
+        let template = fs.readFileSync(path.resolve(process.cwd(), "index.html"), "utf-8");
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(template);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));

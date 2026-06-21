@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { 
   Upload, Image as ImageIcon, Cpu, Trash2, 
   Sliders, Copy, Check, Download, Share2, 
-  Grid, FileText, AlertTriangle, RefreshCw, Sparkles
+  Grid, FileText, AlertTriangle, RefreshCw, Sparkles, Key
 } from "lucide-react";
 
 // Hardcoded array of 10 photography styles
@@ -114,6 +114,13 @@ export default function AIProductStudio() {
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [copiedDesc, setCopiedDesc] = useState(false);
 
+  // Custom API Key states
+  const [customApiKey, setCustomApiKey] = useState(() => {
+    return localStorage.getItem("gemini_custom_api_key") || "";
+  });
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState(customApiKey);
+
   // Helper utility to convert uploaded file into base64 object
   const handleFileRead = async (file) => {
     if (!file.type.startsWith('image/')) {
@@ -199,11 +206,16 @@ export default function AIProductStudio() {
   const processSingleImageCall = async (style) => {
     const promptText = compilePromptText(style);
     
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    if (customApiKey.trim()) {
+      headers["x-custom-api-key"] = customApiKey.trim();
+    }
+    
     const response = await fetch("/api/generate-image", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers,
       body: JSON.stringify({
         uploadedImages,
         promptText
@@ -306,11 +318,16 @@ export default function AIProductStudio() {
     setListingDescription("");
 
     try {
+      const headers = {
+        "Content-Type": "application/json"
+      };
+      if (customApiKey.trim()) {
+        headers["x-custom-api-key"] = customApiKey.trim();
+      }
+
       const response = await fetch("/api/generate-listing", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers,
         body: JSON.stringify({
           uploadedImages,
           decoration: controlsConfig.decoration,
@@ -445,10 +462,24 @@ export default function AIProductStudio() {
           </div>
         </div>
 
-        {/* SECURE STATUS INDICATOR */}
-        <div className="flex items-center space-x-2 bg-neutral-900/60 border border-neutral-800 px-3.5 py-1.5 rounded-lg">
-          <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-          <span className="text-xs text-neutral-400 font-semibold">Automatic Server-Side Key Active</span>
+        {/* SECURE STATUS INDICATOR & CUSTOM API SETUP */}
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => {
+              setTempApiKey(customApiKey);
+              setIsApiKeyModalOpen(true);
+            }}
+            className={`flex items-center space-x-2 border px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 outline-none hover:scale-[1.02] active:scale-[0.98] ${
+              customApiKey.trim()
+                ? "bg-emerald-950/30 border-emerald-800/80 hover:border-emerald-700 hover:bg-emerald-950/50 text-emerald-300"
+                : "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800/80 text-neutral-300"
+            }`}
+            title="Configure Custom Gemini API Key"
+          >
+            <Key className={`w-3.5 h-3.5 ${customApiKey.trim() ? "text-emerald-400" : "text-neutral-400"}`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${customApiKey.trim() ? "bg-emerald-400 animate-pulse" : "bg-indigo-400 animate-pulse"}`}></div>
+            <span>{customApiKey.trim() ? "Custom API Key Active" : "Automatic Server Key Active"}</span>
+          </button>
         </div>
       </header>
 
@@ -985,6 +1016,91 @@ export default function AIProductStudio() {
         </section>
 
       </main>
+
+      {/* CUSTOM KEY SETTING MODAL */}
+      {isApiKeyModalOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div 
+            className="bg-neutral-900 border border-neutral-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl shadow-black/50 animate-in fade-in zoom-in duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-indigo-400">
+                <Key className="w-5 h-5" />
+                <h3 className="font-bold text-lg text-white">Gemini API Configuration</h3>
+              </div>
+              <button 
+                onClick={() => setIsApiKeyModalOpen(false)}
+                className="text-neutral-500 hover:text-neutral-300 text-sm p-1 hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                aria-label="Close API config"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                By default, this application connects to the secure **Automatic Server-Side Key** managed by the server.
+              </p>
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                If you have your own Gemini API Key, you can add it below. This allows you to generate using your own quotas.
+              </p>
+            </div>
+
+            <div className="space-y-1.5 pt-2">
+              <label className="block text-xs font-bold uppercase tracking-wide text-neutral-400 select-none">
+                Custom Gemini API Key
+              </label>
+              <input
+                type="password"
+                value={tempApiKey || ""}
+                onChange={(e) => setTempApiKey(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder-neutral-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
+              <button
+                onClick={() => {
+                  setTempApiKey("");
+                  setCustomApiKey("");
+                  localStorage.removeItem("gemini_custom_api_key");
+                  setIsApiKeyModalOpen(false);
+                }}
+                className="px-3.5 py-2 bg-neutral-950 hover:bg-neutral-800 text-xs font-semibold text-rose-400 hover:text-rose-300 rounded-lg border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer"
+              >
+                Use Automatic Key
+              </button>
+              
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setIsApiKeyModalOpen(false)}
+                  className="px-3.5 py-2 hover:bg-neutral-800 text-xs font-semibold text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const trimmed = tempApiKey.trim();
+                    setCustomApiKey(trimmed);
+                    if (trimmed) {
+                      localStorage.setItem("gemini_custom_api_key", trimmed);
+                    } else {
+                      localStorage.removeItem("gemini_custom_api_key");
+                    }
+                    setIsApiKeyModalOpen(false);
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-lg shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 transition-all cursor-pointer"
+                >
+                  Save Key
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
