@@ -114,12 +114,107 @@ export default function AIProductStudio() {
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [copiedDesc, setCopiedDesc] = useState(false);
 
-  // Custom API Key states
+  // Custom API Key & Alternative Image Provider states
+  const [imageProvider, setImageProvider] = useState(() => {
+    return localStorage.getItem("image_provider") || "gemini";
+  });
+  const [pollinationsModel, setPollinationsModel] = useState(() => {
+    return localStorage.getItem("pollinations_model") || "flux";
+  });
+  const [huggingfaceToken, setHuggingfaceToken] = useState(() => {
+    return localStorage.getItem("huggingface_token") || "";
+  });
+  const [huggingfaceModel, setHuggingfaceModel] = useState(() => {
+    return localStorage.getItem("huggingface_model") || "stabilityai/stable-diffusion-3.5-large";
+  });
+  const [openaiApiKey, setOpenaiApiKey] = useState(() => {
+    return localStorage.getItem("openai_api_key") || "";
+  });
+  const [openaiModel, setOpenaiModel] = useState(() => {
+    return localStorage.getItem("openai_model") || "dall-e-3";
+  });
+  const [customApiUrl, setCustomApiUrl] = useState(() => {
+    return localStorage.getItem("custom_api_url") || "";
+  });
+  const [customApiHeaders, setCustomApiHeaders] = useState(() => {
+    return localStorage.getItem("custom_api_headers") || "";
+  });
+  const [customApiBody, setCustomApiBody] = useState(() => {
+    return localStorage.getItem("custom_api_body") || "";
+  });
+  const [customApiResultPath, setCustomApiResultPath] = useState(() => {
+    return localStorage.getItem("custom_api_result_path") || "imageUrl";
+  });
+
   const [customApiKey, setCustomApiKey] = useState(() => {
     return localStorage.getItem("gemini_custom_api_key") || "";
   });
+  const [customImageModel, setCustomImageModel] = useState(() => {
+    return localStorage.getItem("gemini_custom_image_model") || "gemini-2.5-flash-image";
+  });
+
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  
+  // Temp Modal states (for canceling changes)
+  const [tempImageProvider, setTempImageProvider] = useState(imageProvider);
+  const [tempPollinationsModel, setTempPollinationsModel] = useState(pollinationsModel);
+  const [tempHuggingfaceToken, setTempHuggingfaceToken] = useState(huggingfaceToken);
+  const [tempHuggingfaceModel, setTempHuggingfaceModel] = useState(huggingfaceModel);
+  const [tempOpenaiApiKey, setTempOpenaiApiKey] = useState(openaiApiKey);
+  const [tempOpenaiModel, setTempOpenaiModel] = useState(openaiModel);
+  const [tempCustomApiUrl, setTempCustomApiUrl] = useState(customApiUrl);
+  const [tempCustomApiHeaders, setTempCustomApiHeaders] = useState(customApiHeaders);
+  const [tempCustomApiBody, setTempCustomApiBody] = useState(customApiBody);
+  const [tempCustomApiResultPath, setTempCustomApiResultPath] = useState(customApiResultPath);
+
   const [tempApiKey, setTempApiKey] = useState(customApiKey);
+  const [tempImageModel, setTempImageModel] = useState(() => {
+    const model = localStorage.getItem("gemini_custom_image_model") || "gemini-2.5-flash-image";
+    return ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "imagen-3.0-generate-002", "gemini-2.5-flash-image-preview"].includes(model)
+      ? model
+      : "custom";
+  });
+  const [customModelInput, setCustomModelInput] = useState(() => {
+    const model = localStorage.getItem("gemini_custom_image_model") || "gemini-2.5-flash-image";
+    return ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "imagen-3.0-generate-002", "gemini-2.5-flash-image-preview"].includes(model)
+      ? ""
+      : model;
+  });
+
+  // Helper function to format any Gemini or API errors, transforming Quota exceed errors into a helpful action link
+  const formatGeminiError = (errMessage) => {
+    if (!errMessage) return <p className="text-[10px] text-neutral-500">Network fault or unexpected response.</p>;
+    const lower = errMessage.toLowerCase();
+    const isQuota = 
+      lower.includes("quota") || 
+      lower.includes("rate limit") || 
+      lower.includes("resourceexhausted") || 
+      lower.includes("exhausted") || 
+      lower.includes("429") || 
+      lower.includes("limit exceeded") || 
+      lower.includes("quota exceeded");
+    
+    if (isQuota) {
+      return (
+        <div className="space-y-1.5 text-center p-2 bg-rose-950/20 rounded border border-rose-900/30">
+          <p className="font-bold text-[11px] text-rose-400">⚠️ Gemini API Quota Exceeded</p>
+          <p className="text-[10px] text-neutral-400 leading-snug">
+            The automatic server-side API key has exceeded its current request quota.
+          </p>
+          <button
+            onClick={() => {
+              setTempApiKey(customApiKey);
+              setIsApiKeyModalOpen(true);
+            }}
+            className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-semibold transition-colors focus:outline-none cursor-pointer mt-0.5 block mx-auto hover:scale-[1.02] active:scale-[0.98]"
+          >
+            Click to set your own Custom Gemini Key
+          </button>
+        </div>
+      );
+    }
+    return <p className="text-[10px] text-neutral-500 line-clamp-3 leading-relaxed">{errMessage}</p>;
+  };
 
   // Helper utility to convert uploaded file into base64 object
   const handleFileRead = async (file) => {
@@ -207,10 +302,30 @@ export default function AIProductStudio() {
     const promptText = compilePromptText(style);
     
     const headers = {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "x-image-provider": imageProvider
     };
-    if (customApiKey.trim()) {
-      headers["x-custom-api-key"] = customApiKey.trim();
+    
+    if (imageProvider === "gemini") {
+      if (customApiKey.trim()) {
+        headers["x-custom-api-key"] = customApiKey.trim();
+      }
+      if (customImageModel && customImageModel.trim()) {
+        headers["x-custom-image-model"] = customImageModel.trim();
+      }
+    } else if (imageProvider === "pollinations") {
+      headers["x-pollinations-model"] = pollinationsModel;
+    } else if (imageProvider === "huggingface") {
+      headers["x-huggingface-token"] = huggingfaceToken;
+      headers["x-huggingface-model"] = huggingfaceModel;
+    } else if (imageProvider === "openai") {
+      headers["x-openai-api-key"] = openaiApiKey;
+      headers["x-openai-model"] = openaiModel;
+    } else if (imageProvider === "custom") {
+      headers["x-custom-api-url"] = customApiUrl;
+      headers["x-custom-api-headers"] = customApiHeaders;
+      headers["x-custom-api-body"] = customApiBody;
+      headers["x-custom-api-result-path"] = customApiResultPath;
     }
     
     const response = await fetch("/api/generate-image", {
@@ -466,19 +581,43 @@ export default function AIProductStudio() {
         <div className="flex items-center space-x-2">
           <button
             onClick={() => {
+              setTempImageProvider(imageProvider);
+              setTempPollinationsModel(pollinationsModel);
+              setTempHuggingfaceToken(huggingfaceToken);
+              setTempHuggingfaceModel(huggingfaceModel);
+              setTempOpenaiApiKey(openaiApiKey);
+              setTempOpenaiModel(openaiModel);
+              setTempCustomApiUrl(customApiUrl);
+              setTempCustomApiHeaders(customApiHeaders);
+              setTempCustomApiBody(customApiBody);
+              setTempCustomApiResultPath(customApiResultPath);
+
               setTempApiKey(customApiKey);
+              const isStandard = ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "imagen-3.0-generate-002", "gemini-2.5-flash-image-preview"].includes(customImageModel);
+              setTempImageModel(isStandard ? customImageModel : "custom");
+              setCustomModelInput(isStandard ? "" : customImageModel);
               setIsApiKeyModalOpen(true);
             }}
             className={`flex items-center space-x-2 border px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 outline-none hover:scale-[1.02] active:scale-[0.98] ${
-              customApiKey.trim()
+              imageProvider !== "gemini" || customApiKey.trim()
                 ? "bg-emerald-950/30 border-emerald-800/80 hover:border-emerald-700 hover:bg-emerald-950/50 text-emerald-300"
                 : "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800/80 text-neutral-300"
             }`}
-            title="Configure Custom Gemini API Key"
+            title="Configure Custom / Alternative Image Generation API Settings"
           >
-            <Key className={`w-3.5 h-3.5 ${customApiKey.trim() ? "text-emerald-400" : "text-neutral-400"}`} />
-            <div className={`w-1.5 h-1.5 rounded-full ${customApiKey.trim() ? "bg-emerald-400 animate-pulse" : "bg-indigo-400 animate-pulse"}`}></div>
-            <span>{customApiKey.trim() ? "Custom API Key Active" : "Automatic Server Key Active"}</span>
+            <Key className={`w-3.5 h-3.5 ${imageProvider !== "gemini" || customApiKey.trim() ? "text-emerald-400" : "text-neutral-400"}`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${imageProvider !== "gemini" || customApiKey.trim() ? "bg-emerald-400 animate-pulse" : "bg-indigo-400 animate-pulse"}`}></div>
+            <span>
+              {imageProvider === "gemini" 
+                ? (customApiKey.trim() ? "Custom Gemini Key" : "Automatic Server Key")
+                : imageProvider === "pollinations"
+                ? `Pollinations.ai (${pollinationsModel})`
+                : imageProvider === "huggingface"
+                ? "HF Stable Diffusion"
+                : imageProvider === "openai"
+                ? `OpenAI (${openaiModel})`
+                : "Custom Image API"}
+            </span>
           </button>
         </div>
       </header>
@@ -813,12 +952,12 @@ export default function AIProductStudio() {
                           )}
 
                           {item.status === 'error' && (
-                            <div className="text-center p-6 space-y-3 max-w-[200px] sm:max-w-xs">
+                            <div className="text-center p-4 space-y-3 max-w-[200px] sm:max-w-xs">
                               <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
                               <p className="text-xs font-semibold text-red-400">{item.styleName} Failed</p>
-                              <p className="text-[10px] text-neutral-500 line-clamp-3 leading-relaxed">
-                                {item.errorMessage || "Network fault or unexpected response."}
-                              </p>
+                              <div className="text-[10px] text-neutral-400 w-full">
+                                {formatGeminiError(item.errorMessage)}
+                              </div>
                               <button 
                                 onClick={() => retrySingleImageGeneration(item.styleId)}
                                 className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-[11px] font-bold text-indigo-400 rounded-lg flex items-center space-x-1.5 mx-auto transition-all cursor-pointer"
@@ -904,9 +1043,9 @@ export default function AIProductStudio() {
                       <AlertTriangle className="w-5 h-5" />
                       <span>Listing Generation Failed</span>
                     </div>
-                    <p className="text-xs text-neutral-400 leading-relaxed">
-                      {listingError}
-                    </p>
+                    <div className="text-xs text-neutral-400 leading-relaxed">
+                      {formatGeminiError(listingError)}
+                    </div>
                     <button 
                       onClick={handleGenerateListing}
                       className="mt-3 px-4 py-2 bg-neutral-800 hover:bg-neutral-750 text-xs text-indigo-400 font-bold rounded-lg flex items-center space-x-1.5 transition-colors border border-neutral-700/60 cursor-pointer"
@@ -1028,50 +1167,270 @@ export default function AIProductStudio() {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2 text-indigo-400">
                 <Key className="w-5 h-5" />
-                <h3 className="font-bold text-lg text-white">Gemini API Configuration</h3>
+                <h3 className="font-bold text-lg text-white">Image Engine & API Settings</h3>
               </div>
               <button 
                 onClick={() => setIsApiKeyModalOpen(false)}
                 className="text-neutral-500 hover:text-neutral-300 text-sm p-1 hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
-                aria-label="Close API config"
+                aria-label="Close settings"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                By default, this application connects to the secure **Automatic Server-Side Key** managed by the server.
-              </p>
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                If you have your own Gemini API Key, you can add it below. This allows you to generate using your own quotas.
-              </p>
-            </div>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wide text-indigo-400 select-none">
+                  Image Generation API Provider
+                </label>
+                <select
+                  value={tempImageProvider}
+                  onChange={(e) => setTempImageProvider(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none cursor-pointer"
+                >
+                  <option value="gemini">Google Gemini AI (Automatic / Custom Keys)</option>
+                  <option value="openai">OpenAI DALL-E (Using your OpenAI API Key) 🔑</option>
+                  <option value="pollinations">Pollinations.ai (100% Free, Keyless & Persistent! 🎉)</option>
+                  <option value="huggingface">Hugging Face Inference API (Requires Token)</option>
+                  <option value="custom">-- Custom Third-Party API Endpoint (DALL-E, fal.ai, etc.) --</option>
+                </select>
+              </div>
 
-            <div className="space-y-1.5 pt-2">
-              <label className="block text-xs font-bold uppercase tracking-wide text-neutral-400 select-none">
-                Custom Gemini API Key
-              </label>
-              <input
-                type="password"
-                value={tempApiKey || ""}
-                onChange={(e) => setTempApiKey(e.target.value)}
-                placeholder="AIzaSy..."
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 placeholder-neutral-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
-              />
+              {/* SECTION FOR GEMINI */}
+              {tempImageProvider === "gemini" && (
+                <div className="space-y-3.5 p-3.5 bg-neutral-950/40 border border-neutral-800 rounded-xl animate-in fade-in duration-200">
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    Default Google Gemini uses standard quotas. Set a custom key to bypass limit constraints.
+                  </p>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Custom Gemini API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={tempApiKey || ""}
+                      onChange={(e) => setTempApiKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Gemini Model
+                    </label>
+                    <select
+                      value={tempImageModel}
+                      onChange={(e) => setTempImageModel(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none cursor-pointer"
+                    >
+                      <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (Recommended standard)</option>
+                      <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                      <option value="imagen-3.0-generate-002">imagen-3.0-generate-002</option>
+                      <option value="gemini-2.5-flash-image-preview">gemini-2.5-flash-image-preview</option>
+                      <option value="custom">-- Type Custom Model Identifier --</option>
+                    </select>
+                  </div>
+
+                  {tempImageModel === "custom" && (
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-400">
+                        Custom Gemini Code ID
+                      </label>
+                      <input
+                        type="text"
+                        value={customModelInput || ""}
+                        onChange={(e) => setCustomModelInput(e.target.value)}
+                        placeholder="e.g. gemini-2.5-flash-image"
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-700 outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECTION FOR OPENAI */}
+              {tempImageProvider === "openai" && (
+                <div className="space-y-3.5 p-3.5 bg-sky-950/20 border border-sky-900/30 rounded-xl animate-in fade-in duration-200">
+                  <p className="text-[11px] text-sky-400 leading-relaxed font-semibold">
+                    🔑 Authenticate using your own OpenAI Secret Key for professional DALL-E 3 rendering!
+                  </p>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      OpenAI API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={tempOpenaiApiKey}
+                      onChange={(e) => setTempOpenaiApiKey(e.target.value)}
+                      placeholder="sk-proj-..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      DALL-E Model Version
+                    </label>
+                    <select
+                      value={tempOpenaiModel}
+                      onChange={(e) => setTempOpenaiModel(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none cursor-pointer"
+                    >
+                      <option value="dall-e-3">DALL-E 3 (High fidelity, amazing details - recommended! ✨)</option>
+                      <option value="dall-e-2">DALL-E 2 (Fast, legacy generator)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION FOR POLLINATIONS */}
+              {tempImageProvider === "pollinations" && (
+                <div className="space-y-3 p-3.5 bg-emerald-950/15 border border-emerald-900/30 rounded-xl animate-in fade-in duration-200">
+                  <p className="text-[11px] text-emerald-400 leading-relaxed font-semibold">
+                    🎉 Free, fast and unlimited! Recommended if you face "Gemini API Quota Exceeded".
+                  </p>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    Our servers will contact the Pollinations network directly. No configuration needed.
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Pollinations Model
+                    </label>
+                    <select
+                      value={tempPollinationsModel}
+                      onChange={(e) => setTempPollinationsModel(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none cursor-pointer"
+                    >
+                      <option value="flux">flux (Hyper Realistic Detail)</option>
+                      <option value="flux-realism">flux-realism (Studio lighting realism)</option>
+                      <option value="flux-anime">flux-anime (Anime / Illustration blend)</option>
+                      <option value="flux-3d">flux-3d (3D CGI Product Render)</option>
+                      <option value="any-dark">any-dark (Dramatic dark contrast)</option>
+                      <option value="turbo">turbo (High speed SDXL)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION FOR HUGGING FACE */}
+              {tempImageProvider === "huggingface" && (
+                <div className="space-y-3 p-3.5 bg-indigo-950/20 border border-indigo-900/30 rounded-xl animate-in fade-in duration-200">
+                  <p className="text-[11px] text-indigo-400 leading-relaxed">
+                    Uses the Hugging Face Free Inference API endpoints directly.
+                  </p>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Hugging Face User Access Token (Bearer)
+                    </label>
+                    <input
+                      type="password"
+                      value={tempHuggingfaceToken}
+                      onChange={(e) => setTempHuggingfaceToken(e.target.value)}
+                      placeholder="hf_..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-700 outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Hugging Face Model Repo Path
+                    </label>
+                    <input
+                      type="text"
+                      value={tempHuggingfaceModel}
+                      onChange={(e) => setTempHuggingfaceModel(e.target.value)}
+                      placeholder="stabilityai/stable-diffusion-3.5-large"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION FOR CUSTOM IMAGE API */}
+              {tempImageProvider === "custom" && (
+                <div className="space-y-3 p-3.5 bg-neutral-950/40 border border-neutral-800 rounded-xl animate-in fade-in duration-200">
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    Target any state-of-the-art third-party service (like fal.ai, replicate, stability.ai, etc.).
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      API Endpoint URL (POST requests)
+                    </label>
+                    <input
+                      type="text"
+                      value={tempCustomApiUrl}
+                      onChange={(e) => setTempCustomApiUrl(e.target.value)}
+                      placeholder="https://api.replicate.com/v1/predictions or fal.ai"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-700 outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Custom JSON Headers
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={tempCustomApiHeaders}
+                      onChange={(e) => setTempCustomApiHeaders(e.target.value)}
+                      placeholder={`{\n  "Authorization": "Bearer YOUR_SECRET_TOKEN"\n}`}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs text-neutral-200 font-mono placeholder-neutral-700 outline-none whitespace-pre"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Payload Body (Supports token {'{prompt}'})
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={tempCustomApiBody}
+                      onChange={(e) => setTempCustomApiBody(e.target.value)}
+                      placeholder={`{\n  "prompt": "{prompt}",\n  "aspect_ratio": "1:1"\n}`}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-xs text-neutral-200 font-mono placeholder-neutral-700 outline-none whitespace-pre"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                      Response JSON Path (e.g. data.0.url, data.0.b64_json or url)
+                    </label>
+                    <input
+                      type="text"
+                      value={tempCustomApiResultPath}
+                      onChange={(e) => setTempCustomApiResultPath(e.target.value)}
+                      placeholder="data.0.url"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-700 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
               <button
                 onClick={() => {
+                  setTempImageProvider("gemini");
+                  setImageProvider("gemini");
+                  localStorage.setItem("image_provider", "gemini");
+
                   setTempApiKey("");
                   setCustomApiKey("");
                   localStorage.removeItem("gemini_custom_api_key");
+
+                  setCustomImageModel("gemini-2.5-flash-image");
+                  localStorage.setItem("gemini_custom_image_model", "gemini-2.5-flash-image");
                   setIsApiKeyModalOpen(false);
                 }}
                 className="px-3.5 py-2 bg-neutral-950 hover:bg-neutral-800 text-xs font-semibold text-rose-400 hover:text-rose-300 rounded-lg border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer"
               >
-                Use Automatic Key
+                Reset to Automatic Key
               </button>
               
               <div className="flex items-center space-x-2">
@@ -1083,6 +1442,37 @@ export default function AIProductStudio() {
                 </button>
                 <button
                   onClick={() => {
+                    // Update Provider
+                    setImageProvider(tempImageProvider);
+                    localStorage.setItem("image_provider", tempImageProvider);
+
+                    // Update Pollinations
+                    setPollinationsModel(tempPollinationsModel);
+                    localStorage.setItem("pollinations_model", tempPollinationsModel);
+
+                    // Update HF
+                    setHuggingfaceToken(tempHuggingfaceToken);
+                    localStorage.setItem("huggingface_token", tempHuggingfaceToken);
+                    setHuggingfaceModel(tempHuggingfaceModel);
+                    localStorage.setItem("huggingface_model", tempHuggingfaceModel);
+
+                    // Update OpenAI
+                    setOpenaiApiKey(tempOpenaiApiKey);
+                    localStorage.setItem("openai_api_key", tempOpenaiApiKey);
+                    setOpenaiModel(tempOpenaiModel);
+                    localStorage.setItem("openai_model", tempOpenaiModel);
+
+                    // Update Custom API Endpoint
+                    setCustomApiUrl(tempCustomApiUrl);
+                    localStorage.setItem("custom_api_url", tempCustomApiUrl);
+                    setCustomApiHeaders(tempCustomApiHeaders);
+                    localStorage.setItem("custom_api_headers", tempCustomApiHeaders);
+                    setCustomApiBody(tempCustomApiBody);
+                    localStorage.setItem("custom_api_body", tempCustomApiBody);
+                    setCustomApiResultPath(tempCustomApiResultPath);
+                    localStorage.setItem("custom_api_result_path", tempCustomApiResultPath);
+
+                    // Update Gemini Key & Gemini Model
                     const trimmed = tempApiKey.trim();
                     setCustomApiKey(trimmed);
                     if (trimmed) {
@@ -1090,11 +1480,16 @@ export default function AIProductStudio() {
                     } else {
                       localStorage.removeItem("gemini_custom_api_key");
                     }
+                    
+                    const selectedModel = tempImageModel === "custom" ? customModelInput.trim() : tempImageModel;
+                    setCustomImageModel(selectedModel || "gemini-2.5-flash-image");
+                    localStorage.setItem("gemini_custom_image_model", selectedModel || "gemini-2.5-flash-image");
+
                     setIsApiKeyModalOpen(false);
                   }}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-lg shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 transition-all cursor-pointer"
                 >
-                  Save Key
+                  Save Configuration
                 </button>
               </div>
             </div>
